@@ -90,14 +90,14 @@ const QLogin = ({ onLoginSuccess }) => {
             )}
 
             <div className="w-full flex flex-col items-center px-4">
-                <div className="mb-8 text-center">
-                    <div className="flex items-center justify-center gap-3 mb-2">
-                        <img src="dist/img/Quickstor icon.png" alt="Logo" className="w-8 h-8" />
-                        <h1 className="text-2xl font-bold text-[#1E293B] tracking-tight">QuickStor</h1>
-                    </div>
-                </div>
-
                 <div className="login-card p-8">
+                    <div className="flex justify-center mb-6">
+                        <img
+                            src="dist/img/Quickstor logo.png"
+                            alt="Quickstor"
+                            className="w-44 h-auto"
+                        />
+                    </div>
                     <h2 className="text-lg font-semibold text-gray-900 mb-6">Sign in to your account</h2>
 
                     <form className="space-y-4" onSubmit={handleSubmit}>
@@ -176,3 +176,4 @@ const QLogin = ({ onLoginSuccess }) => {
 
 
 export default QLogin;
+
