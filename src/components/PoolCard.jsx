@@ -140,7 +140,7 @@ const PoolCard = ({
                                 ))}
                                 {Array.from({ length: missingCount }).map((_, i) => (
                                     <div key={`missing-${i}`} className="flex w-14 flex-col items-center rounded-md border border-danger-200 bg-danger-50 p-2">
-                                        <img src="img/invaliddisk.png" alt="missing disk" className="w-10 h-10 object-contain opacity-50" />
+                                        <img src="dist/img/invaliddisk.png" alt="missing disk" className="w-10 h-10 object-contain opacity-50" />
                                         <span className="mt-1 text-xs font-semibold uppercase tracking-wide text-danger-600">missing</span>
                                         <span className="text-xs font-semibold leading-none text-danger-400">-</span>
                                     </div>

@@ -47,7 +47,7 @@ const DiskIcon = ({
 
             <div className="relative">
                 <img
-                    src={`img/${getDiskImage()}`}
+                    src={`dist/img/${getDiskImage()}`}
                     alt="disk"
                     className={`${isLarge ? 'h-20 w-16' : 'h-10 w-10'} object-contain transition-all ${isSelected || isCache ? 'scale-110' : ''
                         } ${silvering ? 'animate-pulse' : ''}`}
