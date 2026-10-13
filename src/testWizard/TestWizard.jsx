@@ -3,6 +3,40 @@ import { Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Minus, Pa
 import { TEST_SHEETS } from './sheets';
 
 const STORAGE_PREFIX = 'qs-test-wizard-pos:';
+// { sheetId, active }: the sheet last walked, and whether the walkthrough was
+// still showing when the page was left. A closed wizard stays hidden after a
+// refresh or a new login until it is opened again, but keeps its position.
+const STATE_KEY = 'qs-test-wizard-state';
+
+function readState() {
+    try {
+        return JSON.parse(localStorage.getItem(STATE_KEY)) || {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function writeState(patch) {
+    try {
+        localStorage.setItem(STATE_KEY, JSON.stringify({ ...readState(), ...patch }));
+    } catch (e) { /* localStorage unavailable */ }
+}
+
+// Where the user left off: { sheetIndex, flatIndex }, or null when nothing is saved.
+function readResumePoint() {
+    try {
+        let si = TEST_SHEETS.findIndex((s) => s.id === readState().sheetId);
+        // Progress saved before the last sheet was recorded: take the first sheet that has any.
+        if (si === -1) si = TEST_SHEETS.findIndex((s) => localStorage.getItem(STORAGE_PREFIX + s.id) !== null);
+        if (si === -1) return null;
+        const saved = localStorage.getItem(STORAGE_PREFIX + TEST_SHEETS[si].id);
+        if (saved === null || !Number.isFinite(Number(saved))) return null;
+        return { sheetIndex: si, flatIndex: Number(saved) };
+    } catch (e) {
+        return null;
+    }
+}
+
 const prefersReducedMotion = () =>
     typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
@@ -92,12 +126,17 @@ const TestWizard = () => {
     const selector = isActive ? resolveSelector(current.action.target) : null;
     const rect = useTargetRect(selector, isActive);
 
-    // Restore saved progress for the initial sheet once, on mount.
+    const resume = () => {
+        const point = readResumePoint();
+        if (!point) return;
+        setSheetIndex(point.sheetIndex);
+        setFlatIndex(point.flatIndex);
+    };
+
+    // Restore saved progress once, on mount, but only when the walkthrough was
+    // still showing when the page was left.
     useEffect(() => {
-        try {
-            const saved = localStorage.getItem(STORAGE_PREFIX + TEST_SHEETS[0].id);
-            if (saved !== null) setFlatIndex(Number(saved));
-        } catch (e) { /* localStorage unavailable */ }
+        if (readState().active) resume();
     }, []);
 
     useEffect(() => {
@@ -105,6 +144,7 @@ const TestWizard = () => {
         try {
             localStorage.setItem(STORAGE_PREFIX + sheet.id, String(flatIndex));
         } catch (e) { /* localStorage unavailable */ }
+        writeState({ sheetId: sheet.id, active: true });
     }, [flatIndex, sheet.id]);
 
     // Keep the active sheet's accordion section expanded.
@@ -121,12 +161,20 @@ const TestWizard = () => {
         }
     }, [isActive, current?.stepIndex, sheetIndex]);
 
-    // Scroll the active step into view in the sidebar list as it advances.
+    // Keep the active step centred in the sidebar list as it advances. The list
+    // is moved directly and instantly: the page has scroll-behavior: smooth
+    // (adminlte), and a smooth scrollIntoView here is cancelled by the one that
+    // reveals the spotlight target right after it.
     useEffect(() => {
-        if (!current || !sidebarRef.current) return;
-        const row = sidebarRef.current.querySelector(`[data-step-row="${sheetIndex}-${current.stepIndex}"]`);
-        row?.scrollIntoView({ block: 'nearest' });
-    }, [current?.stepIndex, sheetIndex]);
+        const list = sidebarRef.current;
+        if (!current || !list) return;
+        const row = list.querySelector(`[data-step-row="${sheetIndex}-${current.stepIndex}"]`);
+        if (!row) return;
+        const listRect = list.getBoundingClientRect();
+        const rowRect = row.getBoundingClientRect();
+        const top = list.scrollTop + (rowRect.top - listRect.top) - (list.clientHeight - rowRect.height) / 2;
+        list.scrollTo({ top: Math.max(top, 0), behavior: 'instant' });
+    }, [current?.stepIndex, sheetIndex, expandedSheetId, sidebarOpen]);
 
     const startStep = (si, stepIdx) => {
         const targetFlat = si === sheetIndex ? flat : flatten(TEST_SHEETS[si]);
@@ -137,7 +185,19 @@ const TestWizard = () => {
 
     const goNext = () => setFlatIndex((i) => Math.min((i ?? -1) + 1, flat.length));
     const goPrev = () => setFlatIndex((i) => Math.max((i ?? 0) - 1, 0));
-    const exitWalkthrough = () => setFlatIndex(null);
+    // Closing keeps the saved position (unless the sheet is finished) so the
+    // wizard can pick up there when it is opened again.
+    const exitWalkthrough = () => {
+        if (isDone) {
+            try { localStorage.removeItem(STORAGE_PREFIX + sheet.id); } catch (e) { /* noop */ }
+        }
+        setFlatIndex(null);
+        writeState({ active: false });
+    };
+    const openWizard = () => {
+        setSidebarOpen(true);
+        if (flatIndex === null) resume();
+    };
     const restart = () => {
         setFlatIndex(0);
         try { localStorage.removeItem(STORAGE_PREFIX + sheet.id); } catch (e) { /* noop */ }
@@ -151,7 +211,7 @@ const TestWizard = () => {
             {!sidebarOpen && (
                 <button
                     type="button"
-                    onClick={() => setSidebarOpen(true)}
+                    onClick={openWizard}
                     className={`fixed right-6 z-[9994] flex items-center gap-2 rounded-full bg-brand-600 px-4 py-3 text-sm font-semibold text-white shadow-lg hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-100 ${current ? 'bottom-16' : 'bottom-6'}`}
                     title={current || isDone ? 'Show step list' : 'Open Test Wizard'}
                 >
@@ -161,10 +221,14 @@ const TestWizard = () => {
             )}
 
             {/* Step browser sidebar */}
-            <aside
+            {/* A div, not an <aside>: adminlte's unlayered `aside{display:block}` beats Tailwind's
+                layered `flex`, so the panel never became a flex column and the step list grew
+                past the bottom of the screen instead of scrolling. */}
+            <div
+                role="complementary"
                 className={`fixed right-0 top-0 z-[9992] flex h-full w-full flex-col border-l border-border bg-surface shadow-xl transition-transform duration-200 ease-out motion-reduce:transition-none sm:w-[380px] ${
                     sidebarOpen ? 'translate-x-0' : 'translate-x-full'
-                }`}
+                } ${isActive ? 'pb-14' : ''}`}
                 aria-hidden={!sidebarOpen}
             >
                 <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
@@ -187,7 +251,11 @@ const TestWizard = () => {
                     </button>
                 </div>
 
-                <div ref={sidebarRef} className="flex-1 overflow-y-auto px-3 py-3">
+                <div
+                    ref={sidebarRef}
+                    className="min-h-0 flex-1 overflow-y-scroll px-3 py-3"
+                    style={{ scrollbarWidth: 'thin', scrollbarColor: '#9ca3af #f3f4f6', scrollbarGutter: 'stable' }}
+                >
                     {TEST_SHEETS.map((s, si) => {
                         const isExpanded = expandedSheetId === s.id;
                         return (
@@ -253,7 +321,7 @@ const TestWizard = () => {
                         <RotateCcw className="h-3.5 w-3.5" /> Start this sheet over
                     </button>
                 </div>
-            </aside>
+            </div>
 
             {isActive && (
                 <ActionCard
