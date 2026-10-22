@@ -440,7 +440,7 @@ const QServicePerformance = () => {
                             <div className="flex items-center gap-3">
                                 <PartnersTorus total={partnerStats.total} ready={partnerStats.ready} />
                                 <a
-                                    href={`https://${window.location.hostname}:4000`}
+                                    href={`http://${window.location.hostname}:4000`}  /* Grafana (promgraf) serves plain http on 4000 */
                                     target="_blank"
                                     rel="noreferrer"
                                     className="inline-flex h-10 items-center gap-2 rounded-md border border-border bg-surface px-4 text-sm font-semibold text-gray-700 shadow-xs transition-colors hover:bg-gray-50 hover:text-brand-600"
